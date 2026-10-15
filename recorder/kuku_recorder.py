@@ -72,7 +72,9 @@ KEEP_DAYS = 14                     # vaikimisi säilitus (kui saatel pole "keep"
 CLEANUP_EVERY = timedelta(minutes=30)
 LIVE_EVERY = 120                   # pooleli faili üleslaadimise intervall (s)
 
-STATE_DIR = Path.home() / ".local" / "share" / "kuku-salvestus"
+# Dockeris peab see kaust konteineri elueast kauem alles jääma. Tavapaigaldused
+# kasutavad endist asukohta, konteiner saab selle RAADIO_STATE_DIR-iga üle kirjutada.
+STATE_DIR = Path(os.environ.get("RAADIO_STATE_DIR") or Path.home() / ".local" / "share" / "kuku-salvestus").expanduser()
 CONF_DIRS = [Path.home() / ".config" / "raadiosalvestaja", Path.home() / ".config" / "kuku-salvestus"]
 CONF_DIR = CONF_DIRS[0]
 FFMPEG = shutil.which("ffmpeg") or "ffmpeg"
@@ -754,6 +756,8 @@ class Recorder:
         lan = {}
 
         def lan_url():
+            if self.env.get("WEB_URL"):
+                return self.env["WEB_URL"].rstrip("/")
             if "url" not in lan:
                 lan["url"] = f"http://{lan_address()}:{port}"
             return lan["url"]

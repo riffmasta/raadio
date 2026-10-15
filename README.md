@@ -84,6 +84,40 @@ Windowsis: luba installeril lisada tulemüüri reegel (muidu telefon lehte ei n�
 
 Kui projekt on välisel kettal ja macOS küsib Pythonile ligipääsu („Removable Volumes“), luba see.
 
+### Docker
+
+Vaja on Docker Engine'it koos Compose'i pluginaga. Docker sobib nii kohaliku salvestusruumi kui R2 režiimiga.
+
+```bash
+git clone https://github.com/pilvre/raadio.git
+cd raadio
+cp docker/config.env.example docker/config.env
+chmod 600 docker/config.env
+```
+
+`WEB_PASS` on näidisfailis tühi. Parool on soovitatav, sest muidu pääseb lehele igaüks samas võrgus. Ära tee paroolita lehte ruuteri kaudu avalikult ligipääsetavaks. Kui kopeerid podcasti-feedi aadressi arvutis avatud `localhost` lehelt, sea `WEB_URL` hosti LAN- või Tailscale'i aadressiks. Ära lisa seadete faili git'i ega kopeeri paroole vestlusesse. Seejärel käivita:
+
+```bash
+docker compose up -d --build
+docker compose logs -f raadiosalvesti
+```
+
+Veebileht avaneb samas arvutis aadressil `http://localhost:8788` ja telefonis aadressil `http://<arvuti-IP>:8788`. Ära ava porti ruuterist avalikku internetti. Kodust väljas kasuta Tailscale'i.
+
+Salvestused ja salvesti sisemine olek asuvad Dockeri volume'ites `recordings` ja `recorder-state`, seega konteineri uuesti loomine neid ei kustuta. `docker compose down` jätab volume'id alles. Käsk `docker compose down -v` kustutab need koos salvestustega, seega ära kasuta `-v`, kui tahad salvestused alles hoida.
+
+Kasulikud käsud:
+
+```bash
+docker compose ps
+docker compose logs -f raadiosalvesti
+docker compose restart raadiosalvesti
+docker compose exec raadiosalvesti python recorder/raadio.py test 30 vikerraadio
+docker compose build --pull && docker compose up -d
+```
+
+R2 kasutamiseks sea samas seadete failis `STORAGE=r2` ja täida R2 väljad. R2 võtmed jäävad ainult hosti faili `docker/config.env`. Cloudflare Pages'i seadistus on endiselt vajalik ning selle `AUTH_USER` ja `AUTH_PASS` peavad jääma sisse.
+
 ### Kodust väljas: Tailscale
 
 [Tailscale](https://tailscale.com) (tasuta) teeb Maci telefonile kättesaadavaks ka kodust väljas – ilma ruuteri seadistamise ja avaliku aadressita:

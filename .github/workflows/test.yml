@@ -17,6 +17,32 @@ jobs:
         with: { python-version: "${{ matrix.python }}" }
       - run: pip install -q -r recorder/requirements.txt && python recorder/tests/test_core.py
 
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Seaded
+        run: |
+          cp docker/config.env.example docker/config.env
+          sed -i 's/^WEB_PASS=.*/WEB_PASS=test/' docker/config.env
+      - name: Image ja veebileht
+        run: |
+          docker compose up -d --build
+          for i in $(seq 30); do
+            curl -fsS -u raadio:test http://localhost:8788/ >/dev/null && break
+            sleep 2
+          done
+          curl -fsS -u raadio:test http://localhost:8788/ >/dev/null
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8788/api/config)" = 401
+          docker compose ps
+      - name: Logi
+        if: always()
+        run: docker compose logs
+      - name: Koristus
+        if: always()
+        run: docker compose down -v
+
   windows:
     runs-on: windows-latest
     timeout-minutes: 20
