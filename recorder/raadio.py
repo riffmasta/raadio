@@ -78,9 +78,9 @@ def show_access():
     u = url()
     if not u:
         return
-    print(f"  🌐 selles arvutis: http://localhost:{u.rsplit(':', 1)[1]}")
-    print(f"  📱 telefonis (samas Wi-Fi-s): {u}")
     e = env()
+    print(f"  🌐 selles arvutis: http://localhost:{e.get('WEB_PORT') or 8788}")
+    print(f"  📱 telefonis (samas Wi-Fi-s): {u}")
     if e.get("WEB_PASS"):
         print(f"  Kasutajanimi: {e.get('WEB_USER') or 'raadio'}   (parool ununes? raadio parool)")
     else:
@@ -168,6 +168,8 @@ def url():
     st = make_storage(e)
     if st.kind != "local" and e.get("WEB") != "1":
         return None
+    if e.get("WEB_URL"):
+        return e["WEB_URL"].rstrip("/")
     return f"http://{rec.lan_address()}:{e.get('WEB_PORT') or 8788}"
 
 

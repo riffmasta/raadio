@@ -1,0 +1,11 @@
+.git
+.github
+.claude
+**/__pycache__
+**/*.pyc
+**/.DS_Store
+web/node_modules
+web/.wrangler
+web/.dev.vars
+recorder/.venv
+docker/config.env

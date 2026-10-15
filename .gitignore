@@ -7,3 +7,4 @@ r2.env
 .DS_Store
 __pycache__/
 *.pyc
+docker/config.env

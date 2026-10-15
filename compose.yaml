@@ -1,0 +1,26 @@
+services:
+  raadiosalvesti:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8788:8788"
+    environment:
+      RAADIO_CONF: /config/config.env
+      RAADIO_STATE_DIR: /state
+      TZ: Europe/Tallinn
+    volumes:
+      - ./docker/config.env:/config/config.env:ro
+      - recordings:/recordings
+      - recorder-state:/state
+    read_only: true
+    tmpfs:
+      - /tmp:size=1G
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 30s
+
+volumes:
+  recordings:
+  recorder-state:
