@@ -326,6 +326,56 @@ def split_hours(ep):
     return parts
 
 
+def recording_cancel_id(ep):
+    """Sama väärtus kõigil ühe pika saate tunnijuppidel."""
+    return f"{ep['id']}@{ep.get('episode_start', ep['start'])}"
+
+
+def active_recording(key, ep):
+    """Staatuses nähtav algolek. Hoia saate nimi ja episoodi pealkiri eraldi."""
+    return {
+        "key": key,
+        "cancel_id": recording_cancel_id(ep),
+        "cancel_end": ep.get("episode_end", ep["end"]),
+        "id": ep["id"],
+        "show": ep.get("show", {}).get("name"),
+        "thumbnail": ep.get("show", {}).get("thumbnail"),
+        "title": ep["title"],
+        "station": ep.get("station"),
+        "start": ep["start"],
+        "end": ep["end"],
+        "bytes": 0,
+        "state": "starting",
+    }
+
+
+def recording_meta(ep, station, prefix, duration, size, recorded_start, **extra):
+    """Valmis või pooleli faili metaandmed, sealhulgas päris salvestusaeg."""
+    show = ep["show"]
+    return {
+        "key": prefix + ".mp3",
+        "episode_id": ep["id"],
+        "title": ep["title"],
+        "station": station["id"],
+        "station_name": station["name"],
+        "show_id": show["id"],
+        "show": show["name"],
+        "description": ep.get("description") or show.get("description") or "",
+        "thumbnail": show.get("thumbnail"),
+        "start": ep["start"],
+        "end": ep["end"],
+        "recorded_start": recorded_start.isoformat(),
+        "rerun": bool(ep.get("rerun")),
+        "part": ep.get("part"),
+        "parts": ep.get("parts"),
+        "episode_start": ep.get("episode_start", ep["start"]),
+        "episode_end": ep.get("episode_end", ep["end"]),
+        "duration": duration,
+        "size": size,
+        **extra,
+    }
+
+
 def lan_address():
     """Aadress, millega telefon samas võrgus ligi pääseb: Macis <nimi>.local, mujal IP."""
     import socket
@@ -371,6 +421,8 @@ class Recorder:
         self.done = set(json.loads(self.done_file.read_text(encoding="utf-8"))) if self.done_file.exists() else set()
         self.active = {}  # key -> info dict
         self.lock = threading.Lock()
+        self.status_lock = threading.Lock()
+        self.command_lock = threading.Lock()
         self.schedule = []
         self.by_station = {}  # jaam -> viimati edukalt laetud episoodid
         self.schedule_at = None
@@ -385,6 +437,7 @@ class Recorder:
         self.salvage_lock = threading.Lock()
         self.warned = set()  # juba logitud vigased kirjed (mitte iga 20 s järel uuesti)
         self.cancel = set()  # käimasolevad salvestused, mis kasutaja lõpetas („Salvesta kohe“ → „Lõpeta kohe“)
+        self.stopped = {}  # cancel_id -> algse saate lõpp; peatab ka pika saate järgmised tunnijupid
 
     # --- salvestuskiht (R2 või kohalik kaust) ----------------------------
     def get_json(self, key, default):
@@ -392,6 +445,57 @@ class Recorder:
 
     def put_json(self, key, data):
         self.store.put_json(key, data)
+
+    def update_active(self, key, **values):
+        """Uuenda kasutajaliidesele nähtavat salvestuse olekut, kui töö on veel aktiivne."""
+        with self.lock:
+            if key in self.active:
+                self.active[key].update(values)
+
+    def consume_stop_commands(self, now):
+        """Rakenda veebist tulnud ühekordsed peatamiskäsud."""
+        changed = False
+        with self.command_lock:
+            self.stopped = {cid: end for cid, end in self.stopped.items() if end + POST_ROLL > now}
+            if not self.active:
+                return False
+            command_keys = [key for key, _ in self.store.list("commands/stop/") if key.endswith(".json")]
+            for command_key in command_keys:
+                command = self.get_json(command_key, {}) or {}
+                cancel_id = command.get("cancel_id")
+                try:
+                    end = parse_ts(command["end"])
+                except Exception:
+                    end = now
+                if cancel_id:
+                    self.stopped[cancel_id] = end
+                    with self.lock:
+                        for key, info in self.active.items():
+                            if info.get("cancel_id") == cancel_id:
+                                self.cancel.add(key)
+                                info["state"] = "stopping"
+                                log(f"LÕPETATUD kasutaja poolt: {info['title']}")
+                                changed = True
+                self.store.delete([command_key])
+        return changed
+
+    def publish_active_status(self):
+        """Avalda olek kohe pärast peatamiskäsku või töö lõppu, mitte alles järgmises 20 s tsüklis."""
+        with self.status_lock:
+            status = self.get_json("status.json", {}) or {}
+            with self.lock:
+                status["recording"] = list(self.active.values())
+            status["updated"] = datetime.now(timezone.utc).isoformat()
+            self.put_json("status.json", status)
+
+    def command_loop(self):
+        while True:
+            try:
+                if self.consume_stop_commands(datetime.now(timezone.utc)):
+                    self.publish_active_status()
+            except Exception as e:
+                log(f"peatamiskäsu viga: {e}")
+            time.sleep(3)
 
     # --- kava -------------------------------------------------------------
     def refresh_schedule(self):
@@ -450,6 +554,7 @@ class Recorder:
     def record(self, key, ep):
         start, end = parse_ts(ep["start"]), parse_ts(ep["end"])
         stop_at = end + ep.get("_post", POST_ROLL)
+        recorded_start = datetime.now(timezone.utc)
         show = ep["show"]
         station = self.stations[ep["station"]]
         tmp = Path(tempfile.mkdtemp(prefix="kuku-"))
@@ -459,27 +564,7 @@ class Recorder:
         live_base = f"live/{name}"
 
         def make_meta(prefix, duration, size, **extra):
-            return {
-                "key": prefix + ".mp3",
-                "episode_id": ep["id"],
-                "title": ep["title"],
-                "station": station["id"],
-                "station_name": station["name"],
-                "show_id": show["id"],
-                "show": show["name"],
-                "description": ep.get("description") or show.get("description") or "",
-                "thumbnail": show.get("thumbnail"),
-                "start": ep["start"],
-                "end": ep["end"],
-                "rerun": bool(ep.get("rerun")),
-                "part": ep.get("part"),
-                "parts": ep.get("parts"),
-                "episode_start": ep.get("episode_start", ep["start"]),
-                "episode_end": ep.get("episode_end", ep["end"]),
-                "duration": duration,
-                "size": size,
-                **extra,
-            }
+            return recording_meta(ep, station, prefix, duration, size, recorded_start, **extra)
 
         def upload_live(current):
             # pooleli salvestus: senised osad + jooksev fail baitide kaupa kokku (MP3 talub seda)
@@ -492,7 +577,8 @@ class Recorder:
             self.store.put_file(live, live_base + ".mp3")
             self.put_json(live_base + ".json", make_meta(
                 live_base, int(size * 8 / bps), size,
-                live=True, updated=datetime.now(timezone.utc).isoformat(),
+                live=True, state="recording", recorded_end=datetime.now(timezone.utc).isoformat(),
+                updated=datetime.now(timezone.utc).isoformat(),
             ))
 
         # heli: mono (vaikimisi) või stereo – loetakse salvestuse alguses
@@ -503,10 +589,12 @@ class Recorder:
         try:
             self.salvage(live_base)  # sama osa eelmine katkenud katse, kui on
             log(f"START {ep['title']} ({start.astimezone():%H:%M}–{end.astimezone():%H:%M})")
+            self.update_active(key, state="recording", recorded_start=recorded_start.isoformat())
             n = 0
             while True:
                 remaining = (stop_at - datetime.now(timezone.utc)).total_seconds()
                 if remaining < 5 or key in self.cancel:
+                    self.update_active(key, state="stopping" if key in self.cancel else "processing")
                     break
                 part = tmp / f"part{n:03d}.mp3"
                 n += 1
@@ -531,6 +619,7 @@ class Recorder:
                 while proc.poll() is None:
                     time.sleep(2)
                     if datetime.now(timezone.utc) >= stop_at or key in self.cancel:
+                        self.update_active(key, state="stopping" if key in self.cancel else "processing")
                         try:
                             proc.stdin.write("q")
                             proc.stdin.flush()
@@ -564,6 +653,8 @@ class Recorder:
             if not parts:
                 raise RuntimeError("salvestus jäi tühjaks")
 
+            recorded_end = datetime.now(timezone.utc)
+            self.update_active(key, state="processing", recorded_end=recorded_end.isoformat())
             out = tmp / "out.mp3"
             if len(parts) == 1:
                 shutil.move(parts[0], out)
@@ -578,6 +669,7 @@ class Recorder:
 
             duration = self.probe_duration(out)
             meta = make_meta(base, duration, out.stat().st_size,
+                             recorded_end=recorded_end.isoformat(),
                              recorded_at=datetime.now(timezone.utc).isoformat())
             self.store.put_file(out, meta["key"])
             self.put_json(base + ".json", meta)
@@ -599,6 +691,7 @@ class Recorder:
                 self.done.add(key)
                 self.done = prune_done(self.done)
                 self.done_file.write_text(json.dumps(sorted(self.done)), encoding="utf-8")
+            self.publish_active_status()
 
     @staticmethod
     def probe_duration(path):
@@ -711,6 +804,7 @@ class Recorder:
         if not self.cleanup_at or datetime.now(timezone.utc) - self.cleanup_at > CLEANUP_EVERY:
             threading.Thread(target=self.cleanup, daemon=True).start()
         now = datetime.now(timezone.utc)
+        self.consume_stop_commands(now)
         upcoming = []
         wanted_keys = set()
         for e in self.wanted(config):
@@ -729,11 +823,13 @@ class Recorder:
                 wanted_keys.add(key)
                 if end <= now or key in self.done:
                     continue
+                if recording_cancel_id(ep) in self.stopped:
+                    continue
                 if start - ep.get("_pre", PRE_ROLL) <= now:
                     with self.lock:
                         if key in self.active:
                             continue
-                        self.active[key] = {"title": ep["title"], "start": ep["start"], "end": ep["end"], "bytes": 0}
+                        self.active[key] = active_recording(key, ep)
                     threading.Thread(target=self.record, args=(key, ep), daemon=True).start()
                 else:
                     upcoming.append({"title": ep["title"], "start": ep["start"], "end": ep["end"]})
@@ -742,18 +838,20 @@ class Recorder:
             for k in list(self.active):
                 if k.startswith("now:") and k not in wanted_keys and k not in self.cancel:
                     self.cancel.add(k)
+                    self.active[k]["state"] = "stopping"
                     log(f"LÕPETATUD kasutaja poolt: {self.active[k]['title']}")
         upcoming.sort(key=lambda x: x["start"])
         with self.lock:
             recording = list(self.active.values())
-        self.put_json("status.json", {
-            "updated": now.isoformat(),
-            "recording": recording,
-            "next": upcoming[:5],
-            "last_error": self.last_error,
-            "version": self.version,
-            "update": self.update,
-        })
+        with self.status_lock:
+            self.put_json("status.json", {
+                "updated": now.isoformat(),
+                "recording": recording,
+                "next": upcoming[:5],
+                "last_error": self.last_error,
+                "version": self.version,
+                "update": self.update,
+            })
 
     def start_web(self):
         """Kohalikus režiimis (või WEB=1) jagab arvuti ise veebilehte ja API-t."""
@@ -789,6 +887,7 @@ class Recorder:
         self.kill_orphans()
         log(f"salvesti käivitus ({self.store.kind}: {getattr(self.store, 'root', None) or getattr(self.store, 'bucket', '')})")
         self.start_web()
+        threading.Thread(target=self.command_loop, daemon=True, name="stop-commands").start()
         while True:
             try:
                 self.tick()
@@ -811,7 +910,7 @@ if __name__ == "__main__":
             "station": sys.argv[3] if len(sys.argv) > 3 else "kuku", "rerun": False, "description": "Testsalvestus",
             "show": {"id": "test:0", "name": "Test", "description": "Testsalvestus", "thumbnail": None},
         }
-        r.active["test"] = {"title": ep["title"], "bytes": 0}
+        r.active["test"] = active_recording("test", ep)
         r.record("test", ep)
     else:
         env = load_env(CRED_FILE)
