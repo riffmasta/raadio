@@ -93,6 +93,11 @@ def find_conf():
 
 CRED_FILE = find_conf()
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
+ENV_CONFIG_KEYS = {
+    "STORAGE", "LOCAL_DIR", "WEB", "WEB_PORT", "WEB_USER", "WEB_PASS", "WEB_URL",
+    "R2_ENDPOINT", "R2_BUCKET", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY",
+    "KUKU_STREAM_URL", "KUKU_SCHEDULE_URL", "FFMPEG", "LOG_FILE", "UPDATE_CHECK", "UPDATE_URL",
+}
 
 
 def log(*a):
@@ -101,13 +106,17 @@ def log(*a):
 
 def load_env(path):
     env = {}
-    if not path.exists():
-        return env
-    for line in path.read_text(encoding="utf-8-sig").splitlines():
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            k, v = line.split("=", 1)
-            env[k.strip()] = v.strip().strip('"').strip("'")
+    if path.exists():
+        for line in path.read_text(encoding="utf-8-sig").splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                env[k.strip()] = v.strip().strip('"').strip("'")
+    # Konteiner võib saada seaded Komodo/Compose'i keskkonnast.
+    if os.environ.get("RAADIO_ENV_CONFIG") == "1":
+        for key in ENV_CONFIG_KEYS:
+            if key in os.environ:
+                env[key] = os.environ[key]
     return env
 
 
