@@ -2,9 +2,9 @@
 set -eu
 
 config_file=${RAADIO_CONF:-/config/config.env}
-if [ ! -f "$config_file" ]; then
+if [ ! -f "$config_file" ] && [ "${RAADIO_ENV_CONFIG:-}" != 1 ]; then
     echo "Seadete fail puudub: $config_file" >&2
-    echo "Kopeeri docker/config.env.example faili docker/config.env ja täida parool." >&2
+    echo "Kopeeri docker/config.env.example faili docker/config.env." >&2
     exit 1
 fi
 

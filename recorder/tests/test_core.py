@@ -1,7 +1,9 @@
 """Kiired kontrollid, mis peavad töötama ka vanal Pythonil (macOS-i vaikimisi 3.9)."""
+import os
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.argv = ["test"]
@@ -67,6 +69,16 @@ def test_update_only_when_newer():
     assert not k.is_newer("b", "2026-10-12T17:50:56+03:00", "a", "2026-10-12T20:10:00+03:00")  # leht veel vana
     assert k.is_newer("b", "2026-10-12T17:50:56+03:00", "a", None)  # vana paigaldus (aeg teadmata)
     assert not k.is_newer("a", "x", "a", None)
+
+
+def test_load_env_from_process():
+    values = {"RAADIO_ENV_CONFIG": "1", "STORAGE": "local", "WEB_USER": "komodo",
+              "WEB_PASS": "salajane"}
+    with patch.dict(os.environ, values, clear=False):
+        env = k.load_env(Path("/puuduv.env"))
+    assert env["STORAGE"] == "local"
+    assert env["WEB_USER"] == "komodo"
+    assert env["WEB_PASS"] == "salajane"
 
 
 if __name__ == "__main__":
