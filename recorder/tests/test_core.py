@@ -1,6 +1,7 @@
 """Kiired kontrollid, mis peavad töötama ka vanal Pythonil (macOS-i vaikimisi 3.9)."""
 import os
 import sys
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
@@ -25,6 +26,69 @@ def test_split_hours_and_titles():
           "lineup": [{"start": a.isoformat(), "end": (a + timedelta(hours=3)).isoformat(), "name": "Saade"}]}
     parts = k.split_hours(ep)
     assert len(parts) == 3 and parts[0]["title"].startswith("R2 otse: Saade")
+
+
+def test_active_status_keeps_show_name_and_lifecycle():
+    ep = {"id": "kuku:episode", "station": "kuku", "start": "2026-10-15T19:00:00+03:00",
+          "end": "2026-10-15T20:00:00+03:00", "title": "Episoodi teema",
+          "show": {"id": "kuku:show", "name": "Saate nimi"}}
+    active = k.active_recording("job-key", ep)
+    assert active["key"] == "job-key"
+    assert active["cancel_id"] == "kuku:episode@2026-10-15T19:00:00+03:00"
+    assert active["cancel_end"] == "2026-10-15T20:00:00+03:00"
+    assert active["show"] == "Saate nimi"
+    assert active["title"] == "Episoodi teema"
+    assert active["state"] == "starting"
+
+
+def test_recording_meta_keeps_requested_and_actual_times():
+    ep = {"id": "now:kuku:1", "station": "kuku", "start": "2026-10-15T20:00:00+03:00",
+          "end": "2026-10-15T21:00:00+03:00", "title": "Otse",
+          "show": {"id": "now:kuku", "name": "Kuku otse", "thumbnail": None}}
+    actual_start = datetime(2026, 10, 15, 17, 0, 5, tzinfo=timezone.utc)
+    actual_end = datetime(2026, 10, 15, 17, 6, 10, tzinfo=timezone.utc)
+    meta = k.recording_meta(ep, {"id": "kuku", "name": "Raadio Kuku"}, "rec/test", 365, 123,
+                            actual_start, recorded_end=actual_end.isoformat())
+    assert meta["start"] == ep["start"] and meta["end"] == ep["end"]
+    assert meta["recorded_start"] == actual_start.isoformat()
+    assert meta["recorded_end"] == actual_end.isoformat()
+
+
+def test_stop_command_uses_server_status_values():
+    status = {"recording": [{"key": "job", "cancel_id": "episode@start", "end": "2026-10-15T21:00:00+03:00"}]}
+    assert w.stop_command(status, "job") == {
+        "key": "job", "cancel_id": "episode@start", "end": "2026-10-15T21:00:00+03:00",
+    }
+    assert w.stop_command(status, "unknown") is None
+
+
+def test_recorder_consumes_stop_command_for_active_job():
+    class Store:
+        objects = {"commands/stop/one.json": {
+            "cancel_id": "episode@start", "end": "2026-10-15T21:00:00+03:00",
+        }}
+
+        def list(self, prefix):
+            return [(key, 1) for key in self.objects if key.startswith(prefix)]
+
+        def get_json(self, key, default=None):
+            return self.objects.get(key, default)
+
+        def delete(self, keys):
+            for key in keys:
+                self.objects.pop(key, None)
+
+    recorder = k.Recorder.__new__(k.Recorder)
+    recorder.store = Store()
+    recorder.command_lock = threading.Lock()
+    recorder.lock = threading.Lock()
+    recorder.stopped = {}
+    recorder.cancel = set()
+    recorder.active = {"job": {"cancel_id": "episode@start", "title": "Saade", "state": "recording"}}
+    changed = recorder.consume_stop_commands(datetime(2026, 10, 15, 17, tzinfo=timezone.utc))
+    assert changed and recorder.cancel == {"job"}
+    assert recorder.active["job"]["state"] == "stopping"
+    assert not recorder.store.objects
 
 
 def test_timer_same_start_end_skipped():

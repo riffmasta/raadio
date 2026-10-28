@@ -8,6 +8,7 @@ import hmac
 import json
 import re
 import threading
+import uuid
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -93,6 +94,14 @@ def normalize_config(body):
         "synced": {_s(k, 40): _s(v, 40) for k, v in (body.get("synced") or {}).items()},
         "updated": now.isoformat(),
     }
+
+
+def stop_command(status, key):
+    """Leia status.json-ist peatamiseks vajalik serveri kontrollitud siht."""
+    job = next((r for r in (status or {}).get("recording", []) if r.get("key") == key), None)
+    if not job or not job.get("cancel_id") or not (job.get("cancel_end") or job.get("end")):
+        return None
+    return {"key": key, "cancel_id": job["cancel_id"], "end": job.get("cancel_end") or job["end"]}
 
 
 # --- podcasti-feed (sama mis web/lib/feed.js) ---------------------------------------------
@@ -227,6 +236,16 @@ def make_handler(store, auth, lan=None):
                         return self.send_json(cfg)
                 if p == "/api/status" and method == "GET":
                     return self.send_json(store.get_json("status.json", None))
+                if p == "/api/stop" and method == "POST":
+                    n = int(self.headers.get("Content-Length") or 0)
+                    if n > 10_000:
+                        return self.send_text("liiga suur", 413)
+                    body = json.loads(self.rfile.read(n) or b"{}")
+                    command = stop_command(store.get_json("status.json", {}) or {}, str(body.get("key") or ""))
+                    if not command:
+                        return self.send_text("salvestust ei leitud", 409)
+                    store.put_json(f"commands/stop/{uuid.uuid4().hex}.json", command)
+                    return self.send_json({"stopping": True}, 202)
                 if p == "/api/recordings":
                     if method == "GET":
                         return self.api_recordings()
@@ -254,6 +273,7 @@ def make_handler(store, auth, lan=None):
         do_GET = lambda self: self.route("GET")
         do_HEAD = lambda self: self.route("HEAD")
         do_PUT = lambda self: self.route("PUT")
+        do_POST = lambda self: self.route("POST")
         do_DELETE = lambda self: self.route("DELETE")
 
         # --- API ---
