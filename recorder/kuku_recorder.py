@@ -12,6 +12,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import ssl
 import subprocess
 import sys
@@ -534,6 +535,7 @@ class Recorder:
         self.warned = set()  # juba logitud vigased kirjed (mitte iga 20 s järel uuesti)
         self.cancel = set()  # käimasolevad salvestused, mis kasutaja lõpetas („Salvesta kohe“ → „Lõpeta kohe“)
         self.stopped = {}  # cancel_id -> algse saate lõpp; peatab ka pika saate järgmised tunnijupid
+        self.shutdown = threading.Event()
 
     # --- salvestuskiht (R2 või kohalik kaust) ----------------------------
     def get_json(self, key, default):
@@ -585,13 +587,13 @@ class Recorder:
             self.put_json("status.json", status)
 
     def command_loop(self):
-        while True:
+        while not self.shutdown.is_set():
             try:
                 if self.consume_stop_commands(datetime.now(timezone.utc)):
                     self.publish_active_status()
             except Exception as e:
                 log(f"peatamiskäsu viga: {e}")
-            time.sleep(3)
+            self.shutdown.wait(3)
 
     # --- kava -------------------------------------------------------------
     def refresh_schedule(self):
@@ -919,6 +921,8 @@ class Recorder:
         upcoming = []
         wanted_keys = set()
         for e in self.wanted(config):
+            if self.shutdown.is_set():
+                break
             try:  # üks vigane kirje ei tohi kõiki salvestusi peatada
                 segs = split_hours(e)
             except Exception as ex:
@@ -997,17 +1001,44 @@ class Recorder:
                         "Invoke-CimMethod -MethodName Terminate | Out-Null"], capture_output=True, **NO_WINDOW)
 
     def run(self):
+        # Kõik sama /state volume'iga konteinerid jagavad lukku. Ära luba
+        # deploy ajal kahel protsessil sama saadet salvestada või olekut muuta.
+        instance_lock = None
+        if os.environ.get("RAADIO_DOCKER"):
+            import fcntl
+            instance_lock = (STATE_DIR / "recorder.lock").open("a")
+            try:
+                fcntl.flock(instance_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise SystemExit("Salvesti juba töötab sama /state kaustaga")
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            signal.signal(sig, lambda *_: self.shutdown.set())
         self.kill_orphans()
         log(f"salvesti käivitus ({self.store.kind}: {getattr(self.store, 'root', None) or getattr(self.store, 'bucket', '')})")
         self.start_web()
         threading.Thread(target=self.command_loop, daemon=True, name="stop-commands").start()
-        while True:
-            try:
-                self.tick()
-            except Exception as e:
-                self.last_error = str(e)
-                log("tsükli viga:", e)
-            time.sleep(POLL_SECONDS)
+        try:
+            while not self.shutdown.is_set():
+                try:
+                    self.tick()
+                    (STATE_DIR / "heartbeat").touch()
+                except Exception as e:
+                    self.last_error = str(e)
+                    log("tsükli viga:", e)
+                self.shutdown.wait(POLL_SECONDS)
+        finally:
+            log("Salvesti lõpetab: säilitan käimasolevad salvestused")
+            with self.lock:
+                self.cancel.update(self.active)
+            # record() lõpetab ffmpeg-i, salvestab MP3 ja metaandmed ning done.json-i.
+            # Konteineri stop_grace_period piirab vajadusel ootamist.
+            while True:
+                with self.lock:
+                    if not self.active:
+                        break
+                time.sleep(0.2)
+            if instance_lock:
+                instance_lock.close()
 
 
 if __name__ == "__main__":

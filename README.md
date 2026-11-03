@@ -91,6 +91,8 @@ Kui projekt on välisel kettal ja macOS küsib Pythonile ligipääsu („Removab
 
 ### Docker
 
+Coolify kaudu ehitamiseks ja paigaldamiseks vaata [Coolify juhendit](docker/COOLIFY.md).
+
 Vaja on Docker Engine'it koos Compose'i pluginaga. Docker sobib nii kohaliku salvestusruumi kui R2 režiimiga. Siinne `compose.yaml` ehitab selle fork'i koodi ja käitab seda tavakasutajana kirjutuskaitstud konteineris; ülaltoodud NAS-i näide `docker-compose.yml` kasutab algprojekti valmis tõmmist.
 
 ```bash

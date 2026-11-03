@@ -1,5 +1,7 @@
-"""Kontrollib, et salvesti põhiprotsess töötab ka R2 režiimis, kus veebiserverit pole."""
+"""Kontrollib protsessi ja salvesti viimast edukat tsüklit (ka R2 režiimis)."""
 
+import os
+import time
 from pathlib import Path
 
 
@@ -14,4 +16,13 @@ def recorder_is_running():
     return False
 
 
-raise SystemExit(0 if recorder_is_running() else 1)
+def heartbeat_is_fresh():
+    heartbeat = Path(os.environ.get("RAADIO_STATE_DIR", "/state")) / "heartbeat"
+    try:
+        return 0 <= time.time() - heartbeat.stat().st_mtime < 180
+    except OSError:
+        return False
+
+
+if __name__ == "__main__":
+    raise SystemExit(0 if recorder_is_running() and heartbeat_is_fresh() else 1)
