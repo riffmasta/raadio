@@ -46,6 +46,13 @@ Deploy keset saadet võib seega saate lühemaks jätta; uuenda saadete vahel.
 Tervisekontroll nõuab töötavat protsessi ja viimase 3 minuti edukat põhitsüklit.
 Käivitumisele on kava laadimiseks antud 3 minutit.
 
+Esimesel käivitusel saab Coolify terminalis kontrollida ligipääsu, õigusi,
+salvestamist ja helifailis liikumist käsuga `python docker/smokecheck.py`.
+See loob tühjas paigalduses ühe 20-sekundilise Vikerraadio testsalvestuse ja
+märgib selle `/state/deployment-smoke.json` faili. Pärast konteineri uuesti
+loomist sama käsku korrates kontrollitakse olemasoleva faili ja oleku säilimist.
+Käsk ei salvesta kasutaja tellimuste kõrvale uut testi ega väljasta paroole.
+
 ## Taastamine ja varundus
 
 - Varunda mõlemad volume'id ning Coolify keskkonnaseaded enda privaatsesse
