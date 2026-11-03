@@ -3,7 +3,7 @@
 # Coolify custom start command: sh docker/publish-image.sh
 services:
   image:
-    image: registry.riffman.eu/raadio:${SOURCE_COMMIT:?Coolify must provide the source commit}
+    image: ${RAADIO_IMAGE_REPOSITORY:?Set the private registry repository in Coolify}:${SOURCE_COMMIT:?Coolify must provide the source commit}
     build:
       context: .
       dockerfile: Dockerfile

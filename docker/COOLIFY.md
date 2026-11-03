@@ -9,7 +9,7 @@ koodi ja paigaldajaid; konteineritõmmist GitHubis ei ehitata ega avaldata.
 
 Registry teenus kasutab Coolify Docker Registry malli (`registry:3`),
 genereeritud kasutajanime/parooli ning püsivat `registry-data` volume'it.
-Privaatne HTTPS-aadress on `registry.riffman.eu`. Kohtvõrgu pöördproksi
+Privaatse HTTPS-aadressi valid oma Coolify seadistuses. Kohtvõrgu pöördproksi
 lõpetab TLS-i ja edastab päringud registri HTTP-pordile, säilitades `Host`
 ning määrates `X-Forwarded-Proto: https`. Luba mahukad voogedastusega
 üleslaadimised ning piisav ajapiirang. Ära ava seda teenust ruuterist internetti.
@@ -22,6 +22,9 @@ Loo eraldi Git-põhine Compose application **Raadio image builder**:
 
 - Repository ja branch: `https://github.com/riffmasta/raadio`, `main`.
 - Compose location: `/compose.coolify.build.yaml`.
+- `RAADIO_IMAGE_REPOSITORY`: registri host ja tõmmise nimi, näiteks
+  `registry.example.com/raadio` (ilma `https://` prefiksita). Sea see nii
+  build-time kui runtime muutujaks. Tegelik privaatne aadress jääb Coolifysse.
 - Custom Build Command: `docker compose build`.
 - Custom Start Command: `sh docker/publish-image.sh`.
 - Source commit availability: saadaval ehitamise ajal. Compose kasutab
@@ -30,7 +33,7 @@ Loo eraldi Git-põhine Compose application **Raadio image builder**:
 - Ära lisa salvestuste/oleku volume'eid ega salvesti parooli.
 
 Ehituskäsk käitab testid enne avaldamist. Tõmmised avaldatakse kujul
-`registry.riffman.eu/raadio:<täispikk-commit>` ja mugavussildiga `main`.
+`<RAADIO_IMAGE_REPOSITORY>:<täispikk-commit>` ja mugavussildiga `main`.
 Olemasolevat commit-silti ehituskäsk üle ei kirjuta. Ehitusrakendus ei
 käivita püsivat konteinerit: selle runtime-olek võib seega olla `exited`,
 kuigi ehituse deployment on `finished`.
