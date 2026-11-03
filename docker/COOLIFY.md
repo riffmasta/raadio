@@ -22,8 +22,10 @@ Loo eraldi Git-põhine Compose application **Raadio image builder**:
 
 - Repository ja branch: `https://github.com/riffmasta/raadio`, `main`.
 - Compose location: `/compose.coolify.build.yaml`.
-- Custom Build Command: `sh docker/build-image.sh`.
-- Custom Start Command: `docker compose config --quiet`.
+- Custom Build Command: `docker compose build`.
+- Custom Start Command: `sh docker/publish-image.sh`.
+- Source commit availability: saadaval ehitamise ajal. Compose kasutab
+  Coolify `SOURCE_COMMIT` väärtust tõmmise sildis; `.git` kausta pole vaja.
 - Inject build arguments, preview deployments ja auto deploy: välja lülitatud.
 - Ära lisa salvestuste/oleku volume'eid ega salvesti parooli.
 

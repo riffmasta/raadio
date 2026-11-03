@@ -1,20 +1,21 @@
 #!/bin/sh
-# Called by Coolify's builder application, inside its deployment helper.
+# Called after Coolify's Compose build, inside its deployment helper.
 set -eu
 
-image_repository=${RAADIO_IMAGE_REPOSITORY:-registry.riffman.eu/raadio}
-revision=$(git rev-parse HEAD)
-image="$image_repository:$revision"
+# At the start phase Coolify has written .env, including SOURCE_COMMIT.
+# Reading the resolved Compose image avoids depending on .git (removed by Coolify).
+image=$(docker compose -f compose.coolify.build.yaml config --images)
+image_repository=${image%:*}
+revision=${image##*:}
+case "$revision" in
+    ""|*[!0-9a-f]*) echo "Expected a full Git commit image tag" >&2; exit 1 ;;
+esac
+test "${#revision}" -eq 40
 
 if docker manifest inspect "$image" >/dev/null 2>&1; then
     echo "Already published: $image"
     exit 0
 fi
-
-docker build \
-    --label org.opencontainers.image.source=https://github.com/riffmasta/raadio \
-    --label "org.opencontainers.image.revision=$revision" \
-    --tag "$image" .
 
 # No radio streams, production configuration, or recording volumes are used.
 for test in recorder/tests/test_core.py recorder/tests/test_runtime.py; do

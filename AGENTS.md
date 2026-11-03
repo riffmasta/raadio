@@ -32,7 +32,7 @@ R2:                  arvuti = salvesti ──▶ Cloudflare R2 ◀── Cloudfl
 | `recorder/raadio.py` | juhtkäsk `raadio` (status/start/stop/restart/log/url/test), Mac + Windows + Linux |
 | `recorder/install.sh`, `install.ps1`, `install-linux.sh` | paigaldus (venv, seaded, taustateenus) |
 | `Dockerfile`, `compose.yaml`, `docker/` | Selle fork'i Docker-ehitus: tavakasutaja, kirjutuskaitstud konteiner, `/recordings`, `/state`, seadete fail (`RAADIO_ENV_CONFIG=1` lubab keskkonnamuutujad) |
-| `compose.coolify*.yaml`, `docker/COOLIFY.md` | Eraldi Coolify ehitusrakendus (`docker/build-image.sh`) testib ja avaldab tõmmise privaatsesse registrisse; runtime tõmbab valitud versiooni. Algne `compose.coolify.yaml` toetab endiselt üherakendusega ehitust. `docker/smokecheck.py` kontrollib salvestamist ja andmete säilimist |
+| `compose.coolify*.yaml`, `docker/COOLIFY.md` | Eraldi Coolify ehitusrakendus (`docker/publish-image.sh`) testib ja avaldab tõmmise privaatsesse registrisse; runtime tõmbab valitud versiooni. Algne `compose.coolify.yaml` toetab endiselt üherakendusega ehitust. `docker/smokecheck.py` kontrollib salvestamist ja andmete säilimist |
 | `docker-compose.yml`, `recorder/docker-entrypoint.sh` | Algprojekti valmis NAS-tõmmise näide (`RAADIO_DOCKER=1` konteineris); käivita `docker compose -f docker-compose.yml up -d` |
 | `site/install`, `site/install.ps1`, `site/linux` | ühe käsu alglaadijad (laevad repo alla ja käivitavad paigalduse) |
 | `web/functions/` | Cloudflare Pages Functions (R2 režiim): `api/schedule`, `api/config`, `api/status`, `api/recordings`, `audio/*`, `_middleware.js` (parool) |
