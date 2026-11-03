@@ -1,0 +1,44 @@
+# Coolify pulls an image published by the separate builder resource.
+# Local access only; do not forward this port through the router.
+services:
+  raadiosalvesti:
+    image: ${RAADIO_IMAGE:?Select a registry image pinned to a commit or digest}
+    pull_policy: always
+    restart: unless-stopped
+    expose:
+      - "8788"
+    ports:
+      - "${WEB_BIND_ADDRESS:-127.0.0.1}:8788:8788"
+    environment:
+      RAADIO_ENV_CONFIG: "1"
+      RAADIO_CONF: /config/config.env
+      RAADIO_STATE_DIR: /state
+      STORAGE: local
+      LOCAL_DIR: /recordings
+      WEB_PORT: "8788"
+      WEB_USER: ${WEB_USER:-raadio}
+      WEB_PASS: ${SERVICE_PASSWORD_RAADIO:?}
+      WEB_URL: ${WEB_URL:?}
+      UPDATE_CHECK: "0"
+      TZ: Europe/Tallinn
+    volumes:
+      - recordings:/recordings
+      - recorder-state:/state
+    read_only: true
+    tmpfs:
+      - /tmp:size=1G,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 120s
+    healthcheck:
+      test: ["CMD", "python", "docker/healthcheck.py"]
+      interval: 30s
+      timeout: 5s
+      start_period: 180s
+      retries: 3
+
+volumes:
+  recordings:
+  recorder-state:

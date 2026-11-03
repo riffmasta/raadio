@@ -1,15 +1,50 @@
 # Coolify
 
-Coolify ehitab selle repo Dockerfile'i serveris ja käivitab ühe isikliku
-salvesti koos veebiliidesega. GitHub Actions kontrollib koodi ja paigaldajaid;
-konteineritõmmist GitHubis ei ehitata ega avaldata.
+Coolify eraldi ehitusrakendus ehitab ja testib selle repo Dockerfile'i ning
+avaldab tõmmise privaatses registris. Salvesti rakendus tõmbab valitud tõmmise
+ja käivitab ühe isikliku salvesti koos veebiliidesega. GitHub Actions kontrollib
+koodi ja paigaldajaid; konteineritõmmist GitHubis ei ehitata ega avaldata.
+
+## Register ja ehitamine
+
+Registry teenus kasutab Coolify Docker Registry malli (`registry:3`),
+genereeritud kasutajanime/parooli ning püsivat `registry-data` volume'it.
+Privaatne HTTPS-aadress on `registry.riffman.eu`. Kohtvõrgu pöördproksi
+lõpetab TLS-i ja edastab päringud registri HTTP-pordile, säilitades `Host`
+ning määrates `X-Forwarded-Proto: https`. Luba mahukad voogedastusega
+üleslaadimised ning piisav ajapiirang. Ära ava seda teenust ruuterist internetti.
+
+Logi Coolify server Dockeriga registrisse (Servers → Registries), kasutades
+Registry teenuse keskkonnamuutujates olevaid genereeritud andmeid. Need ei
+käi reposse, ehitusargumentidesse ega vestlusesse.
+
+Loo eraldi Git-põhine Compose application **Raadio image builder**:
+
+- Repository ja branch: `https://github.com/riffmasta/raadio`, `main`.
+- Compose location: `/compose.coolify.build.yaml`.
+- Custom Build Command: `sh docker/build-image.sh`.
+- Custom Start Command: `docker compose config --quiet`.
+- Inject build arguments, preview deployments ja auto deploy: välja lülitatud.
+- Ära lisa salvestuste/oleku volume'eid ega salvesti parooli.
+
+Ehituskäsk käitab testid enne avaldamist. Tõmmised avaldatakse kujul
+`registry.riffman.eu/raadio:<täispikk-commit>` ja mugavussildiga `main`.
+Olemasolevat commit-silti ehituskäsk üle ei kirjuta. Ehitusrakendus ei
+käivita püsivat konteinerit: selle runtime-olek võib seega olla `exited`,
+kuigi ehituse deployment on `finished`.
+
+Register ja ehitamine asuvad samas serveris salvestiga. Nende eraldamine
+rakendusteks ei eralda CPU-, mälu- ega kettakasutust. Varunda registri volume
+ning eemalda aegunud tõmmiseid läbimõeldult, jättes kasutatavad versioonid alles.
 
 ## Seadistus
 
 Loo Git-põhine Application, build pack **Docker Compose**:
 
 - Repository: `https://github.com/riffmasta/raadio`, branch `main`.
-- Base directory: `/`, Compose location: `/compose.coolify.yaml`.
+- Base directory: `/`, Compose location: `/compose.coolify.runtime.yaml`.
+- `RAADIO_IMAGE`: valitud commit-sildiga või SHA256 digestiga registriaadress.
+  Ära kasuta salvesti juurutuseks liikuvat `main` silti.
 - Auto deploy ja preview deployments: välja lülitatud.
 - Inject build arguments to Dockerfile: välja lülitatud. Runtime-seadeid
   pole ehitamiseks vaja; see hoiab ka Dockeri kihtide vahemälu kasutuses.
@@ -25,6 +60,11 @@ Sea `WEB_URL`, `WEB_BIND_ADDRESS` ja `SERVICE_PASSWORD_RAADIO` ainult
 runtime-muutujateks, mitte build-time-muutujateks. `.dockerignore` välistab
 Coolify loodud keskkonnafailid konteineritõmmisest.
 
+Varasem `compose.coolify.yaml` jääb üherakendusega kohapealse ehituse
+variandiks. Ehituse eraldamisel muuda olemasoleva salvesti Compose-faili
+asukohta, säilitades rakenduse UUID, teenuse nime ning volume'id; ära loo
+teist tootmise salvestit uute volume'itega.
+
 Kohalikuks kasutamiseks sea `WEB_URL=http://<serveri-LAN-IP>:8788` ning
 `WEB_BIND_ADDRESS=<serveri-LAN-IP>`. Hoia parool sisse lülitatud ning ära
 suuna ruuterist seda porti internetti. Avalikku domeeni pole vaja.
@@ -39,10 +79,11 @@ konteineri uuesti loomisel. Failid kirjutab UID/GID 1000.
 
 ## Uuendamine
 
-1. Kontrolli lehelt, et ühtegi salvestust pole pooleli ning järgmise alguseni
-   on ehituseks ja taaskäivituseks piisavalt aega.
-2. Ava Coolify rakendus ja vali **Deploy**. Coolify võtab `main` haru koodi,
-   ehitab Dockerfile'i serveris ning loob konteineri uuesti samade volume'itega.
+1. Vali ehitusrakenduses **Deploy** ning oota edukat ehitamist, teste ja push'i.
+   See ei taaskäivita salvestit.
+2. Kontrolli lehelt, et ühtegi salvestust pole pooleli. Sea salvesti rakenduses
+   `RAADIO_IMAGE` edukalt ehitatud commitile või digestile ning vali **Deploy**.
+   Coolify tõmbab tõmmise ja loob konteineri uuesti samade volume'itega.
 3. Kontrolli, et konteiner on healthy, veebileht küsib parooli ja salvesti
    olek uueneb. Proovi lühikest salvestust ning helifailis edasi liikumist.
 
@@ -64,7 +105,8 @@ Käsk ei salvesta kasutaja tellimuste kõrvale uut testi ega väljasta paroole.
 
 - Varunda mõlemad volume'id ning Coolify keskkonnaseaded enda privaatsesse
   varunduskohta. Salvestused ja podcasti võti peavad jääma privaatseks.
-- Eelmisele koodile naasmiseks juuruta Coolifyst eelmine edukas commit uuesti.
+- Eelmisele koodile naasmiseks sea `RAADIO_IMAGE` eelmisele edukale
+  commit-sildile või digestile ning juuruta salvesti uuesti.
   Koodi tagasipööramine ei taasta volume'ite eelmist sisu.
 - Ära kustuta rakendust koos volume'itega ega käivita `docker compose down -v`.
 - ERR-i kava imporditakse endiselt kasutaja brauseris järjehoidjaga;

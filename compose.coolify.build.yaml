@@ -1,0 +1,10 @@
+# Build-job resource: no ports, volumes, or recorder process.
+# Coolify custom build command: sh docker/build-image.sh
+# Coolify custom start command: docker compose config --quiet
+services:
+  image:
+    image: registry.riffman.eu/raadio:main
+    entrypoint: ["true"]
+    restart: "no"
+    healthcheck:
+      disable: true
