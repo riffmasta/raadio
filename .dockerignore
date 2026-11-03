@@ -9,4 +9,7 @@
 web/.wrangler
 web/.dev.vars
 docker/config.env
+**/.env
+**/.env.*
+**/*.env
 site
