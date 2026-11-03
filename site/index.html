@@ -653,6 +653,11 @@
         word-break: break-all;
       }
     }
+    .modes[hidden] { display: none; }
+    .cmd.multi { align-items: flex-start; }
+    .cmd.multi code { white-space: pre !important; word-break: normal !important; overflow-x: auto; font-size: 13px; }
+    .news { background: var(--accent-soft); border-bottom: 1px solid var(--line, #e3e3df); padding: 12px 16px; font-size: 15px; }
+    .news div { max-width: 1040px; margin: 0 auto; }
     .forkwarn { background: #fff4d6; color: #5c4400; border-bottom: 1px solid #f0d78c; padding: 12px 16px; font-size: 15px; }
     .forkwarn div { max-width: 1040px; margin: 0 auto; }
     @media (prefers-color-scheme: dark) { .forkwarn { background: #3a3014; color: #f5e2a8; border-color: #5c4a1a; } }
@@ -664,6 +669,11 @@
     Kui ühendasid oma fork'i Cloudflare'iga, vali projektis <b>Pages</b> (mitte Worker) ja seadetes
     <i>Root directory</i> <code>web</code>, <i>Build output</i> <code>public</code>, build command tühi – siis tuleb siia
     sinu salvestite leht. Juhend: <a href="https://raadio.mastering.ee/#paigaldus">raadio.mastering.ee</a>.</div></div>
+  <div class="news"><div><b>Teade:</b> ERR muutis oma raadiosaitide arhitektuuri ja ERR-i jaamade kava senine
+    laadimisloogika ei toimi. Uues versioonis saab lisada ERR-i jaamade kava otse ERR-i lehelt järjehoidja-nupuga
+    (juhend on Kava all ERR-i jaama juures).<br>Vaja on uuendada: terminalis (Windowsi puhul PowerShell) kirjuta
+    <code>raadio update</code>; Cloudflare'i puhul vajab GitHubis uuendust ka oma koopia → <i>Sync fork</i> →
+    <i>Update branch</i>.</div></div>
   <div class="wrap">
     <header class="top">
       <a class="brand" href="#"><i></i> Personaalne raadiosalvesti</a>
@@ -678,7 +688,7 @@
           arvutist või podcast-pleierist.</p>
         <a class="cta" href="#paigaldus">Paigalda</a><a class="cta ghost" href="https://github.com/pilvre/raadio"
           target="_blank" rel="noopener">Lähtekood</a>
-        <div class="meta">Tasuta · avatud lähtekood (MIT) · Mac, Windows ja Linux · ainult isiklikuks kasutamiseks</div>
+        <div class="meta">Tasuta · avatud lähtekood (MIT) · Mac, Windows, Linux ja NAS · ainult isiklikuks kasutamiseks<span id="views"></span></div>
       </div>
       <div class="phone" aria-hidden="true">
         <div class="bar"><span>9:41</span><span>● ● ●</span></div>
@@ -762,7 +772,7 @@
               <path d="M3 6h18M7 6V4h10v2M6 6l1 14h10l1-14" />
             </svg></div>
           <h3>Koristab ise</h3>
-          <p>Hoia alles nt 2 viimast saadet – vana kustub, kui uus on valmis. Pikad saated tundide kaupa.</p>
+          <p>Hoia alles nt 2 viimast saadet – vana kustub, kui uus on valmis. Lukusta saade, mida tahad alles hoida.</p>
         </div>
         <div class="card">
           <div class="ico"><svg viewBox="0 0 24 24">
@@ -770,10 +780,10 @@
               <path d="M8 20h8M12 16v4" />
             </svg></div>
           <h3>Sinu arvutis</h3>
-          <p>Mac, Windows või Linux (sobib ka Raspberry Pi). Salvestused jäävad arvutisse või soovi korral sinu Cloudflare'i konto pilveruumi.</p>
+          <p>Mac, Windows, Linux või kodune NAS (Docker; sobib ka Raspberry Pi). Salvestused jäävad arvutisse või soovi korral sinu Cloudflare'i konto pilveruumi.</p>
         </div>
       </div>
-      <p class="stations">Jaamad: Raadio Kuku, Vikerraadio, Raadio 2, Klassikaraadio, Raadio 4, Raadio Tallinn, Sky Plus, Retro FM, Rock FM – uusi
+      <p class="stations">Jaamad: Raadio Kuku, Vikerraadio, Raadio 2, Klassikaraadio, Raadio 4, Raadio Tallinn, Sky Plus, Retro FM, Rock FM, Äripäeva raadio – uusi
         saab lisada.</p>
     </div>
   </section>
@@ -785,7 +795,7 @@
       </p>
 
       <div class="seg" role="tablist" aria-label="Operatsioonisüsteem">
-        <button data-os="mac" role="tab">macOS</button><button data-os="win" role="tab">Windows</button><button data-os="linux" role="tab">Linux</button>
+        <button data-os="mac" role="tab">macOS</button><button data-os="win" role="tab">Windows</button><button data-os="linux" role="tab">Linux</button><button data-os="docker" role="tab">NAS / Docker</button>
       </div>
 
       <div class="modes">
@@ -837,13 +847,39 @@
             MP3
             failina või täielikult kustutada; Cloudflare'i konto (või Tailscale'i) puhul saad selle salvestada ka
             (telefoni)
-            brauseri mällu – teine vajutus ikoonile kustutab selle mälust.
+            brauseri mällu – teine vajutus ikoonile kustutab selle mälust. Lukuikooniga lukustatud saade ei kustu
+            automaatselt (nt saade, mida tahad hiljem uuesti kuulata).
             <br><br>Sakk <b>„Minu saated“</b> kuvab salvestamiseks valitud saadete nimistut. Allpool saad iga saate või
             kõigi
             saadete kohta tellida RSS-voo, mille saad lisada podcast-pleierisse ja soovi korral saated kohe alla
             laadida.
             Cloudflare R2 puhul saad kuulata ka otse internetist, sõltumata asukohast.
           </div>
+        </li>
+      </ol>
+
+      <ol class="steps" id="stepsDocker" hidden>
+        <li>
+          <div>Kleebi ülal olev tekst NAS-i konteinerirakendusse (QNAP: <b>Container Station → Applications →
+              Create</b>; Synology: <b>Container Manager → Project → Create</b>; mujal <code>docker compose up -d</code>)
+            ja muuda: parool (<code>RAADIO_PASS</code>), NAS-i aadress koduvõrgus (<code>RAADIO_HOST</code>) ning
+            kaustad, kuhu salvestused ja seaded NAS-is lähevad. Salvestuste kaust peab asuma olemasoleva ühiskausta all
+            (QNAP: <code>/share/&lt;ühiskaust&gt;/…</code>, Synology: <code>/volume1/&lt;ühiskaust&gt;/…</code>) – kõige
+            kindlam on see enne File Stationis luua, muidu võib Docker selle teha süsteemikettale.</div>
+        </li>
+        <li>
+          <div>Käivita. NAS laeb alla valmis konteineri (~150 MB) – see võtab minuti-paar.
+          </div>
+        </li>
+        <li>
+          <div>Ava telefoni või arvuti brauseris <code>http://&lt;NAS-i aadress&gt;:8788</code> ja logi sisse
+            kasutajanime ja parooliga. Edasi on kõik sama mis teistel: Kava, Taimerid, Salvestused, Minu saated,
+            podcasti-voog.</div>
+        </li>
+        <li>
+          <div>Kui lehel on „⬆ Uuendus saadaval“, vali konteinerirakenduses <b>Recreate</b> (või
+            <code>docker compose pull && docker compose up -d</code>). Seaded ja salvestused jäävad NAS-i kaustadesse alles.
+            Kodust väljas kuulamiseks sobib Tailscale'i NAS-i pakett.</div>
         </li>
       </ol>
 
@@ -860,12 +896,12 @@
             faili pane konto ID ning tokeni <i>Access Key ID</i> ja <i>Secret</i>, seejärel käivita käsk uuesti.</div>
         </li>
         <li>
-          <div>Kui sul pole GitHubis kontot, siis tee see (tasuta). Järgmisena tee GitHubis <a
-              href="https://github.com/pilvre/raadio/fork" target="_blank" rel="noopener">koopia (fork)</a> ja ühenda
-            see
-            Cloudflare'is: <b>Compute → Workers &amp; Pages → Create → Pages → Connect to Git</b>. Valikutes Root
-            directory
-            <code>web</code>, build output <code>public</code>, build command tühi.
+          <div>Kui sul pole GitHubis kontot, siis tee see (tasuta). Järgmisena tee GitHubis Raadiosalvesti koodist <a
+              href="https://github.com/pilvre/raadio/fork" target="_blank" rel="noopener">koopia (fork)</a>. Koopias on
+            kõik koos: salvesti, <b>sinu isiklik veebileht</b> (kaust <code>web</code>) ja see tutvustusleht (kaust
+            <code>site</code>, seda pole sul vaja). Cloudflare'is avaldad ainult kausta <code>web</code>:
+            <b>Compute → Workers &amp; Pages → Create → Pages → Connect to Git</b> → vali oma koopia. Valikutes Root
+            directory <code>web</code>, build output <code>public</code>, build command tühi.
             <br><br><b>NB!</b> Vali kindlasti <b>Pages</b>, mitte Worker (Cloudflare pakub vaikimisi Workerit), ja ava
             <i>Build settings</i> all <i>Root directory (advanced)</i>, et sinna <code>web</code> kirjutada. Kui see jääb
             tühjaks, avaneb sinu aadressil hoopis see tutvustusleht – siis muuda projekti seadetes (Settings → Build)
@@ -989,16 +1025,34 @@
     })();
 
     const BASE = location.origin.startsWith("http") && !location.hostname.match(/^(localhost|127\.)/) ? location.origin : "https://raadio.mastering.ee";
-    const CMD = { mac: `curl -fsSL ${BASE}/install | zsh`, win: `irm ${BASE}/install.ps1 | iex`, linux: `curl -fsSL ${BASE}/linux | bash` };
+    const COMPOSE = `services:
+  raadiosalvesti:
+    image: ghcr.io/pilvre/raadio:latest
+    pull_policy: always
+    container_name: raadiosalvesti
+    restart: unless-stopped
+    ports:
+      - "8788:8788"
+    environment:
+      RAADIO_USER: raadio
+      RAADIO_PASS: muuda-see-parool
+      RAADIO_HOST: 192.168.1.10   # NAS-i aadress koduvõrgus
+      TZ: Europe/Tallinn
+    volumes:
+      - /share/Multimedia/Raadiosalvesti:/data           # salvestused (Synology: /volume1/...)
+      - /share/Container/raadiosalvesti/seaded:/config   # seaded`;
+    const CMD = { mac: `curl -fsSL ${BASE}/install | zsh`, win: `irm ${BASE}/install.ps1 | iex`, linux: `curl -fsSL ${BASE}/linux | bash`, docker: COMPOSE };
     const LABEL = {
       mac: "Ava Terminal (Rakendused → Utiliidid → Terminal), kleebi sinna see käsk ja vajuta Enter:",
       win: "Ava PowerShell (Start → kirjuta „PowerShell“ → Enter), kleebi sinna see käsk ja vajuta Enter:",
-      linux: "Ava terminal, kleebi sinna see käsk ja vajuta Enter:"
+      linux: "Ava terminal, kleebi sinna see käsk ja vajuta Enter:",
+      docker: "NAS-i (QNAP, Synology, Unraid, TrueNAS) või muu Dockeri jaoks – docker-compose:"
     };
     const HINT = {
       mac: "Käsk laeb installeri aadressilt raadio.mastering.ee; kood on GitHubis üle vaadatav.",
       win: "Windows 10 või 11. Käsk laeb installeri aadressilt raadio.mastering.ee; kood on GitHubis üle vaadatav.",
-      linux: "Debian, Ubuntu, Raspberry Pi OS, Fedora, Arch (systemd). Salvesti käivitub ka ilma sisselogimiseta – sobib hästi Raspberry Pi-le."
+      linux: "Debian, Ubuntu, Raspberry Pi OS, Fedora, Arch (systemd). Salvesti käivitub ka ilma sisselogimiseta – sobib hästi Raspberry Pi-le.",
+      docker: "NAS töötab niikuinii ööpäev läbi – ideaalne salvesti. Valmis konteiner tuleb GitHubist (ghcr.io); salvestused jäävad NAS-i kausta."
     };
     const ua = navigator.userAgent;
     let os = /Win/i.test(ua) ? "win" : /Linux/i.test(ua) && !/Android/i.test(ua) ? "linux" : "mac", mode = "local";
@@ -1010,8 +1064,12 @@
       document.getElementById("cmd").textContent = CMD[os];
       document.getElementById("cmdLabel").textContent = LABEL[os];
       document.getElementById("hint").textContent = HINT[os];
-      document.getElementById("stepsLocal").hidden = mode !== "local";
-      document.getElementById("stepsR2").hidden = mode !== "r2";
+      const dk = os === "docker";
+      document.querySelector(".cmd").classList.toggle("multi", dk);
+      document.querySelector(".modes").hidden = dk;
+      document.getElementById("stepsDocker").hidden = !dk;
+      document.getElementById("stepsLocal").hidden = dk || mode !== "local";
+      document.getElementById("stepsR2").hidden = dk || mode !== "r2";
     }
     document.querySelectorAll("[data-os]").forEach((b) => (b.onclick = () => { os = b.dataset.os; render(); }));
     document.querySelectorAll("[data-mode]").forEach((b) => (b.onclick = () => { mode = b.dataset.mode; render(); }));
@@ -1029,6 +1087,9 @@
       s.type = "module"; s.src = "https://static.cloudflareinsights.com/beacon.min.js";
       s.dataset.cfBeacon = JSON.stringify({ token: "5c8bc185fcbb48a0af3ffb24eb0ad99f" });
       document.body.appendChild(s);
+      fetch("/count").then((r) => r.json()).then((d) => {
+        if (d.page_views > 0) document.getElementById("views").textContent = ` · ${d.page_views.toLocaleString("et-EE")} lehe avamist`;
+      }).catch(() => {});
     } else if (location.protocol.startsWith("http") && !/^(localhost|127\.|\[::1\])/.test(location.hostname)) {
       document.getElementById("forkwarn").hidden = false;
     }

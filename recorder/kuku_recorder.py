@@ -31,6 +31,7 @@ from storage import make_storage
 STATIONS_FILE = Path(__file__).resolve().parent.parent / "web" / "stations.json"
 KUKU_SCHEDULE_URL = "https://ams.postimees.ee/api/schedule?domain=kuku.pleier.ee&start={start}&end={end}"
 SKY_SCHEDULE_URL = "https://sky.ee/api/radio-stations/{id}/schedule"
+ARIPAEV_SCHEDULE_URL = "https://www.aripaev.ee/raadio/saatekava"  # avalik leht, kava (~3 nädalat) on lehe andmetes
 ERR_SCHEDULE_URL = "https://vikerraadio.err.ee/api/radioSchedule/getTimelineSchedule2?day={d}&month={m}&year={y}&channel={channel}&portal=radio"
 SCHEDULE_DAYS = 7
 
@@ -190,6 +191,47 @@ def fetch_kuku(st, now):
     return out
 
 
+def http_text(url):
+    req = urllib.request.Request(url, headers={"User-Agent": "raadiosalvestaja/1.0"})
+    with urllib.request.urlopen(req, timeout=30, context=SSL_CTX) as r:
+        return r.read().decode("utf-8", "replace")
+
+
+def parse_aripaev(html, st):
+    """Äripäeva saatekava lehe (Next.js) andmetest kirjed {start, end, series, seriesSlug, title, host}."""
+    text = "".join(json.loads('"%s"' % s) for s in re.findall(r'self\.__next_f\.push\(\[1,"((?:[^"\\]|\\.)*)"\]\)', html))
+    dec, items = json.JSONDecoder(), {}
+    for m in re.finditer(r'\{"start":"20', text):
+        try:
+            o, _ = dec.raw_decode(text, m.start())
+            if o.get("series") and o.get("end"):
+                items[o["start"]] = o
+        except ValueError:
+            continue
+    out = []
+    for o in sorted(items.values(), key=lambda x: x["start"]):
+        if parse_ts(o["end"]) <= parse_ts(o["start"]):
+            continue
+        slug = o.get("seriesSlug") or slugify(o["series"])
+        title = (o.get("title") or "").strip()
+        rerun = title.endswith("*")
+        title = title.rstrip("* ").strip()
+        start = parse_ts(o["start"])
+        desc = o.get("description") if isinstance(o.get("description"), str) and not o["description"].startswith("$") else ""
+        out.append({
+            "id": f"{st['id']}:{slug}@{start.strftime('%Y-%m-%dT%H%M')}", "station": st["id"],
+            "start": o["start"], "end": o["end"],
+            "title": title or f"{o['series']} {start:%d.%m.%Y}", "rerun": rerun,
+            "description": strip_html(" · ".join(x for x in (o.get("host") and f"Saatejuht {o['host']}", desc) if x)),
+            "show": {"id": f"{st['id']}:{slug}", "name": o["series"], "description": "", "thumbnail": None},
+        })
+    return out
+
+
+def fetch_aripaev(st, now):
+    return parse_aripaev(http_text(ARIPAEV_SCHEDULE_URL), st)
+
+
 def tallinn_tz():
     try:
         from zoneinfo import ZoneInfo
@@ -235,8 +277,56 @@ def fetch_sky(st, now):
 # Serveripoolne kava ainult jaamadele, kus see on lubatud. ERR-i kava on Cloudflare'i
 # robotikaitse taga – selle laeb veebiliides kasutaja brauseris ja kirjutab valitud
 # saated konkreetsete aegadena config.json-i (episodes).
-FETCHERS = {"kuku": fetch_kuku, "sky": fetch_sky}
+FETCHERS = {"kuku": fetch_kuku, "sky": fetch_sky, "aripaev": fetch_aripaev}
+FETCH_EVERY = {"aripaev": timedelta(hours=6)}  # suur leht – harvem (muud: SCHEDULE_TTL)
 WEEKDAYS = "ETKNRLP"
+
+
+def err_planned(err_sched, shows, stations, now):
+    """ERR: kava toob kasutaja ERR-i lehelt (err_schedule.json, ~9 päeva). Tellitud saate episoodid sellest kavast +
+    nädalamuster kava lõpust edasi (eile..+2 p) – salvestus jätkub, kuni kasutaja tellimuse muudab, ka siis, kui kava
+    on ammu uuendamata. Id-d on samad mis veebilehe koostatud auto-episoodidel (dubleerimist pole)."""
+    tz = tallinn_tz()
+    loc = (lambda d: d.astimezone(tz)) if tz else (lambda d: d.astimezone())
+    by_station = {}
+    for e in (err_sched or {}).get("episodes") or []:
+        by_station.setdefault(e.get("station"), []).append(e)
+    lo, hi = now - timedelta(hours=6), now + timedelta(days=2)
+    today = loc(now).date()
+    out = []
+    for s in shows:
+        st = stations.get(s.get("station"))
+        all_eps = by_station.get(s.get("station"))
+        if not st or st["schedule"]["type"] != "err" or not all_eps:
+            continue
+        sid = norm_id(s["id"])
+        eps = [e for e in all_eps if (e.get("show") or {}).get("id") == sid and (not e.get("rerun") or s.get("reruns"))]
+        if not eps:
+            continue
+        last_day = max(loc(parse_ts(e["start"])).date() for e in all_eps)
+        out += [e for e in eps if parse_ts(e["end"]) > lo and parse_ts(e["start"]) < hi]
+        slots = {}
+        for e in eps:
+            a = loc(parse_ts(e["start"]))
+            slots[(a.isoweekday(), a.hour, a.minute)] = parse_ts(e["end"]) - parse_ts(e["start"])
+        for off in range(-1, 3):
+            day = today + timedelta(days=off)
+            if day <= last_day:
+                continue
+            for (wd, h, m), dur in slots.items():
+                if wd != day.isoweekday():
+                    continue
+                start = datetime(day.year, day.month, day.day, h, m, tzinfo=tz)
+                if not tz:
+                    start = start.astimezone()
+                out.append({
+                    "id": f"{sid}@{day.isoformat()}T{h:02d}{m:02d}", "station": st["id"],
+                    "start": start.isoformat(), "end": (start + dur).isoformat(),
+                    "title": f"{s.get('name') or eps[0]['show'].get('name')} {day:%d.%m.%Y}", "rerun": False, "description": "",
+                    "show": {"id": sid, "name": s.get("name") or eps[0]["show"].get("name"), "description": "",
+                             "thumbnail": eps[0]["show"].get("thumbnail")},
+                })
+    return out
 
 
 def expand_timers(timers, now):
@@ -379,6 +469,10 @@ def recording_meta(ep, station, prefix, duration, size, recorded_start, **extra)
 def lan_address():
     """Aadress, millega telefon samas võrgus ligi pääseb: Macis <nimi>.local, mujal IP."""
     import socket
+    if os.environ.get("RAADIO_HOST"):  # konteiner (NAS): sisemine IP pole koduvõrgus nähtav
+        return os.environ["RAADIO_HOST"]
+    if os.environ.get("RAADIO_DOCKER"):
+        return "<NAS-i aadress>"
     if sys.platform == "darwin":
         try:
             name = subprocess.run(["scutil", "--get", "LocalHostName"], capture_output=True, text=True, timeout=3).stdout.strip()
@@ -425,6 +519,8 @@ class Recorder:
         self.command_lock = threading.Lock()
         self.schedule = []
         self.by_station = {}  # jaam -> viimati edukalt laetud episoodid
+        self.err_sched = {}   # kasutaja toodud ERR-i kava (err_schedule.json)
+        self.fetched_at = {}  # jaam -> viimane edukas kava laadimine
         self.schedule_at = None
         self.last_error = None
         self.config = {}
@@ -502,11 +598,19 @@ class Recorder:
         now = datetime.now(timezone.utc)
         if self.schedule_at and now - self.schedule_at < SCHEDULE_TTL:
             return
+        try:
+            self.err_sched = self.get_json("err_schedule.json", {}) or {}
+        except Exception as e:
+            log(f"ERR-i kava lugemine ebaõnnestus: {e}")  # jääb eelmine
         for sid, st in self.stations.items():
-            if st["schedule"]["type"] not in FETCHERS:
+            kind = st["schedule"]["type"]
+            if kind not in FETCHERS:
+                continue
+            if kind in FETCH_EVERY and sid in self.fetched_at and now - self.fetched_at[sid] < FETCH_EVERY[kind]:
                 continue
             try:
-                self.by_station[sid] = FETCHERS[st["schedule"]["type"]](st, now)
+                self.by_station[sid] = FETCHERS[kind](st, now)
+                self.fetched_at[sid] = now
             except Exception as e:
                 log(f"kava viga ({st['name']}): {e}")  # jääb eelmine kava
         lo, hi = now - timedelta(hours=6), now + timedelta(days=SCHEDULE_DAYS)
@@ -545,6 +649,9 @@ class Recorder:
             if ep is None and e.get("station") and e.get("show"):
                 ep = e  # brauseris koostatud (nt ERR) – ajad on kaasas
             if ep and emit(ep):
+                yield ep
+        for ep in err_planned(self.err_sched, config.get("shows", []), self.stations, datetime.now(timezone.utc)):
+            if emit(ep):
                 yield ep
         for ep in expand_timers(config.get("timers", []), datetime.now(timezone.utc)):
             if emit(ep):
@@ -746,9 +853,13 @@ class Recorder:
                 day = parse_ts(m.get("episode_start", m["start"])).astimezone().date().isoformat()
                 episodes.setdefault((norm_id(m.get("show_id")), day), []).append(m)
 
+            # 🔒 lukustatud saatepäev ei kustu ega loe „keep N“ arvestusse
+            locked = set((self.get_json("locked.json", None) or {}).get("keys", []))
             doomed = []
             by_show = {}
             for (sid, ep_start), parts in episodes.items():
+                if any(p.get("key") in locked for p in parts):
+                    continue
                 keep = (shows.get(sid) or {}).get("keep")
                 if keep:
                     by_show.setdefault(sid, []).append((ep_start, parts))
@@ -850,6 +961,8 @@ class Recorder:
                 "next": upcoming[:5],
                 "last_error": self.last_error,
                 "version": self.version,
+                "version_date": version_info()[1],
+                "docker": bool(os.environ.get("RAADIO_DOCKER")),
                 "update": self.update,
             })
 

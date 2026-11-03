@@ -4,6 +4,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     RAADIO_CONF=/config/config.env \
     RAADIO_STATE_DIR=/state \
+    RAADIO_DOCKER=1 \
     TZ=Europe/Tallinn
 
 RUN apt-get update \
@@ -19,6 +20,8 @@ COPY recorder/requirements.txt recorder/requirements.txt
 RUN pip install --no-cache-dir -r recorder/requirements.txt
 
 COPY --chown=raadio:raadio . .
+RUN printf '#!/bin/sh\nexec python /app/recorder/raadio.py "$@"\n' > /usr/local/bin/raadio \
+    && chmod +x /usr/local/bin/raadio
 
 USER raadio
 EXPOSE 8788

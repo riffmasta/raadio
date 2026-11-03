@@ -51,6 +51,25 @@ def _norm_id(i):
     return str(i) if ":" in str(i) else f"kuku:{i}"
 
 
+def normalize_err_schedule(body, station_ids):
+    """Kasutaja brauserist (ERR-i järjehoidjaga) toodud kava – sama mis web/functions/api/err-schedule.js."""
+    eps = []
+    for e in (body.get("episodes") or [])[:4000]:
+        try:
+            if e.get("station") not in station_ids or parse_ts(e["end"]) <= parse_ts(e["start"]):
+                continue
+            sh = e.get("show") or {}
+            eps.append({
+                "id": _s(e["id"], 80), "station": e["station"], "start": _s(e["start"], 40), "end": _s(e["end"], 40),
+                "title": _s(e.get("title")), "rerun": bool(e.get("rerun")), "description": _s(e.get("description"), 500),
+                "show": {"id": _s(sh.get("id"), 80), "name": _s(sh.get("name")), "description": "",
+                         "thumbnail": _s(sh["thumbnail"], 500) if sh.get("thumbnail") else None},
+            })
+        except Exception:
+            continue
+    return {"updated": datetime.now(timezone.utc).isoformat(), "episodes": eps}
+
+
 def normalize_config(body):
     now = datetime.now(timezone.utc)
     eps = []
@@ -234,6 +253,17 @@ def make_handler(store, auth, lan=None):
                         cfg = normalize_config(body)
                         store.put_json("config.json", cfg)
                         return self.send_json(cfg)
+                if p == "/api/err-schedule":
+                    if method == "GET":
+                        return self.send_json(store.get_json("err_schedule.json", None) or {"updated": None, "episodes": []})
+                    if method == "PUT":
+                        n = int(self.headers.get("Content-Length") or 0)
+                        if n > 4_000_000:
+                            return self.send_text("liiga suur", 413)
+                        err_ids = {s["id"] for s in stations_def if s["schedule"]["type"] == "err"}
+                        data = normalize_err_schedule(json.loads(self.rfile.read(n) or b"{}"), err_ids)
+                        store.put_json("err_schedule.json", data)
+                        return self.send_json({"updated": data["updated"], "count": len(data["episodes"])})
                 if p == "/api/status" and method == "GET":
                     return self.send_json(store.get_json("status.json", None))
                 if p == "/api/stop" and method == "POST":
@@ -249,11 +279,15 @@ def make_handler(store, auth, lan=None):
                 if p == "/api/recordings":
                     if method == "GET":
                         return self.api_recordings()
+                    key = (q.get("key") or [""])[0]
+                    if method in ("PUT", "DELETE") and not re.fullmatch(r"rec/[\w.-]+\.mp3", key):
+                        return self.send_text("bad key", 400)
+                    if method == "PUT":  # ?key=…&locked=1|0
+                        self.set_locked(key, (q.get("locked") or ["1"])[0] == "1")
+                        return self.send_json({"key": key, "locked": (q.get("locked") or ["1"])[0] == "1"})
                     if method == "DELETE":
-                        key = (q.get("key") or [""])[0]
-                        if not re.fullmatch(r"rec/[\w.-]+\.mp3", key):
-                            return self.send_text("bad key", 400)
                         store.delete([key, key[:-4] + ".json"])
+                        self.set_locked(key, False)
                         self.send_response(204)
                         self.end_headers()
                         return
@@ -296,7 +330,16 @@ def make_handler(store, auth, lan=None):
             # uuemad päevad eespool, päeva sees kronoloogiliselt
             items.sort(key=lambda m: m["start"])
             items.sort(key=lambda m: tallinn_day(m["start"]), reverse=True)
+            locked = set((store.get_json("locked.json", None) or {}).get("keys", []))
+            for m in items:
+                m["locked"] = m["key"] in locked
             self.send_json(items)
+
+        def set_locked(self, key, on):
+            """🔒 lukustatud salvestust automaatne koristus ei kustuta (locked.json – sama mis web/functions)."""
+            keys = set((store.get_json("locked.json", None) or {}).get("keys", []))
+            keys = keys | {key} if on else keys - {key}
+            store.put_json("locked.json", {"keys": sorted(keys)})
 
         def audio(self, key, q, head=False):
             if not KEY_RE.match(key) or not store.exists(key):

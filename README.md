@@ -2,7 +2,7 @@
 
 Isiklik ajanihke-salvesti Eesti raadiojaamade **vabalt kättesaadavale otse-eetrile** – nagu vanasti kassettmakk raadio kõrval. Vali kavast saated või sea taimer, sinu arvuti (Mac, Windows või Linux) salvestab need mono-MP3-na – oma kettale või soovi korral Cloudflare R2-sse – ja hiljem kuulad neid telefonist.
 
-Jaamad: Raadio Kuku, Vikerraadio, Raadio 2, Klassikaraadio, Raadio 4, Raadio Tallinn, Sky Plus, Retro FM, Rock FM (lisa uusi failis [`web/stations.json`](web/stations.json)).
+Jaamad: Raadio Kuku, Vikerraadio, Raadio 2, Klassikaraadio, Raadio 4, Raadio Tallinn, Sky Plus, Retro FM, Rock FM, Äripäeva raadio (lisa uusi failis [`web/stations.json`](web/stations.json)).
 
 > **⚠️ Ainult isiklikuks kasutamiseks.** See ei ole ühegi raadiojaama ametlik tööriist ega seotud nendega. Salvestused on autoriõigusega kaitstud: ära jaga neid, ära tee lehte avalikuks ega ehita sellest teenust teistele. Tööriist kasutab jaamade avalike veebipleierite voo- ja kava-aadresse, mis võivad igal ajal muutuda. Kasutad omal vastutusel.
 
@@ -14,6 +14,7 @@ Jaamad: Raadio Kuku, Vikerraadio, Raadio 2, Klassikaraadio, Raadio 4, Raadio Tal
 - **Pikad saated täistundide kaupa** (nt hommikuraadio 06–07, 07–08, …), iga tund kuulatav kohe, kui valmis
 - **Pooleli salvestust saab kuulata** – uueneb iga 2 min järel
 - **Säilitus saadete kaupa:** hoia alles N viimast saatepäeva (vana kustub, kui uus on valmis) või vaikimisi 14 päeva
+- **🔒 Lukusta:** salvestus (kogu saatepäev) jääb alles ka siis, kui säilitusaeg möödub – nt saade, mida tahad hiljem uuesti kuulata.
 - **Pleier:** jätkab sealt, kus pooleli jäi; 15 s / 30 s kerimine, kiirus 1–2×, lukustuskuva juhtnupud, klaviatuuri otseteed
 - **Otse-eeter:** ▶ Otse kuulab valitud jaama kohe
 - **Salvesta kohe:** ⏺ Salvesta paneb valitud jaama kohe salvestama 30–180 minutiks (pikem salvestus jaguneb täistundide kaupa); „Lõpeta kohe“ peatab ja salvestatu jääb alles
@@ -38,6 +39,8 @@ R2:                   Mac: salvesti ──▶ Cloudflare R2 ◀── Cloudflare
 **Telefoni laadimine.** Salvestuse menüüst (⋯):
 - **⬇ Laadi telefoni** – salvestus jääb brauserisse, leht ja pleier töötavad ka ilma võrguta (📱). Vajab **https**-i: R2/Pages režiimis alati olemas, kohalikus režiimis Tailscale'iga. iPhone'is lisa leht avaekraanile (Jaga → Lisa avaekraanile), muidu võib Safari andmed mõne nädala pärast kustutada.
 - **Salvesta failina** – MP3 telefoni Failid-äppi, töötab alati.
+
+**ERR-i kava.** ERR muutis oma saiti ega luba kava enam teistel lehtedel laadida. Kava tood ise: Kava → mõni ERR-i jaam → lohista nupp **„📻 ERR → Raadiosalvesti“** brauseri järjehoidjaribale (kui riba pole näha, Chrome'is: Seaded → Välimus → Järjehoidjariba → Kuva alati), ava [eestiraadio.err.ee](https://eestiraadio.err.ee) ja klõpsa järjehoidjat. Tellitud ERR-i saated salvestatakse nagu varem ja jätkuvad nädalamustri järgi ka pärast seda, kui toodud kava (~9 päeva) lõpeb – uuenda kava siis, kui ERR saatekava muudab.
 
 **Autos (Android Auto, CarPlay).** „Minu saated“ → **Podcast** → lülita sisse ja lisa aadress podcastirakendusse: **AntennaPod** (Android) või **Apple Podcasts** (iPhone). Rakendus laeb salvestused telefoni, autos kuulad neid nagu podcaste. Feedi aadressis on salajane võti (`config.json` → `feed_token`), mis avab ainult salvestused; võtit saab vahetada. Ära kasuta Pocket Castsi ega Overcasti – need loevad feede oma serverite kaudu.
 
@@ -71,6 +74,8 @@ curl -fsSL https://raadio.mastering.ee/install | zsh
 curl -fsSL https://raadio.mastering.ee/linux | bash
 ```
 
+**NAS / Docker** (QNAP Container Station, Synology Container Manager, Unraid, TrueNAS või `docker compose -f docker-compose.yml`): kopeeri [`docker-compose.yml`](docker-compose.yml), muuda parool (`RAADIO_PASS`), NAS-i aadress (`RAADIO_HOST`) ja kaustad (salvestuste kaust olemasoleva ühiskausta alla – loo see enne File Stationis, muidu võib Docker selle teha süsteemikettale), käivita. NAS laeb alla valmis konteineri `ghcr.io/pilvre/raadio` (amd64, arm64, armv7; ehitatakse GitHubis igal avaldamisel, `Dockerfile`); salvestused on `/data`, seaded `/config` all. Uuendus: konteinerirakenduses *Recreate* või `docker compose -f docker-compose.yml pull && docker compose -f docker-compose.yml up -d`. Olek: `docker exec raadiosalvesti raadio`, logi: `docker logs -f raadiosalvesti`.
+
 **Windows 10/11** (PowerShell):
 ```powershell
 irm https://raadio.mastering.ee/install.ps1 | iex
@@ -86,10 +91,10 @@ Kui projekt on välisel kettal ja macOS küsib Pythonile ligipääsu („Removab
 
 ### Docker
 
-Vaja on Docker Engine'it koos Compose'i pluginaga. Docker sobib nii kohaliku salvestusruumi kui R2 režiimiga.
+Vaja on Docker Engine'it koos Compose'i pluginaga. Docker sobib nii kohaliku salvestusruumi kui R2 režiimiga. Siinne `compose.yaml` ehitab selle fork'i koodi ja käitab seda tavakasutajana kirjutuskaitstud konteineris; ülaltoodud NAS-i näide `docker-compose.yml` kasutab algprojekti valmis tõmmist.
 
 ```bash
-git clone https://github.com/pilvre/raadio.git
+git clone https://github.com/riffmasta/raadio.git
 cd raadio
 cp docker/config.env.example docker/config.env
 chmod 600 docker/config.env
@@ -152,7 +157,7 @@ Ilma `AUTH_USER`/`AUTH_PASS` saladusteta ei lase leht kedagi sisse.
 | `raadio update` | uuenda uusimale versioonile (seaded ja salvestused jäävad alles) |
 | `raadio parool` | näita kasutajanime, sea uus parool või eemalda see (ununenud parool) |
 
-**Uuendused.** Salvesti kontrollib kord 12 tunni jooksul faili `https://raadio.mastering.ee/version.json` (muid andmeid ei saadeta). Kui on uuem versioon, näitavad seda veebileht („⬆ Uuendus saadaval“) ja `raadio`. Uuenda käsuga `raadio update` – see hoiatab, kui salvestus parasjagu käib. Kontrolli saab välja lülitada: `UPDATE_CHECK=0` seadete failis.
+**Uuendused.** Salvesti kontrollib kord 12 tunni jooksul faili `https://raadio.mastering.ee/version.json` (muid andmeid ei saadeta). Kui on uuem versioon, näitavad seda veebileht („⬆ Uuendus saadaval“) ja `raadio`. Uuenda käsuga `raadio update` – see hoiatab, kui salvestus parasjagu käib. Kontrolli saab välja lülitada: `UPDATE_CHECK=0` seadete failis. **Cloudflare'i (R2) variandis** tuleb veebileht sinu GitHubi koopiast – uuenda seda GitHubis: oma koopia → **Sync fork → Update branch** (leht näitab „⬆ Uuenda veebilehte“, kui salvesti on uuem).
 
 **Statistika.** raadio.mastering.ee loendab ainult päevaseid arve (lehe avamised, paigaldused, uuendused ja uuenduste kontrollid) – IP-aadresse ega muid isikuandmeid ei salvestata (`site/functions/`).
 
