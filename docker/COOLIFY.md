@@ -11,12 +11,19 @@ Loo Git-põhine Application, build pack **Docker Compose**:
 - Repository: `https://github.com/riffmasta/raadio`, branch `main`.
 - Base directory: `/`, Compose location: `/compose.coolify.yaml`.
 - Auto deploy ja preview deployments: välja lülitatud.
+- Inject build arguments to Dockerfile: välja lülitatud. Runtime-seadeid
+  pole ehitamiseks vaja; see hoiab ka Dockeri kihtide vahemälu kasutuses.
+- Consistent container names: sisse lülitatud.
 - `WEB_USER`: vaikimisi `raadio`.
 - `SERVICE_PASSWORD_RAADIO`: Coolify genereeritud parool; vaata või muuda seda
   Coolify Environment Variables vaates. Ära lisa parooli reposse ega vestlusesse.
 - `WEB_URL`: telefoni jaoks kasutatav HTTPS-aadress, ilma lõpu kaldkriipsuta.
 - `WEB_BIND_ADDRESS`: hosti kohtvõrgu IP. Vaikimisi `127.0.0.1` lubab
   ligipääsu ainult serverist endast.
+
+Sea `WEB_URL`, `WEB_BIND_ADDRESS` ja `SERVICE_PASSWORD_RAADIO` ainult
+runtime-muutujateks, mitte build-time-muutujateks. `.dockerignore` välistab
+Coolify loodud keskkonnafailid konteineritõmmisest.
 
 Kohalikuks kasutamiseks sea `WEB_URL=http://<serveri-LAN-IP>:8788` ning
 `WEB_BIND_ADDRESS=<serveri-LAN-IP>`. Hoia parool sisse lülitatud ning ära
