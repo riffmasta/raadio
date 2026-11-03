@@ -14,18 +14,22 @@ test "${#revision}" -eq 40
 
 if docker manifest inspect "$image" >/dev/null 2>&1; then
     echo "Already published: $image"
-    exit 0
+    # Reuse the published commit image, even if the build used newer base layers.
+    docker pull "$image"
+else
+    # No radio streams, production configuration, or recording volumes are used.
+    for test in recorder/tests/test_core.py recorder/tests/test_runtime.py; do
+        docker run --rm --network none --read-only \
+            --cap-drop ALL --security-opt no-new-privileges:true \
+            --tmpfs /tmp:mode=1777 \
+            --entrypoint python "$image" "$test"
+    done
+
+    docker push "$image"
 fi
 
-# No radio streams, production configuration, or recording volumes are used.
-for test in recorder/tests/test_core.py recorder/tests/test_runtime.py; do
-    docker run --rm --network none --read-only \
-        --cap-drop ALL --security-opt no-new-privileges:true \
-        --tmpfs /tmp:mode=1777 \
-        --entrypoint python "$image" "$test"
+for alias in main latest; do
+    docker tag "$image" "$image_repository:$alias"
+    docker push "$image_repository:$alias"
 done
-
-docker push "$image"
-docker tag "$image" "$image_repository:main"
-docker push "$image_repository:main"
 echo "Ready to deploy: $image"

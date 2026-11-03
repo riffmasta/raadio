@@ -33,7 +33,7 @@ Loo eraldi Git-põhine Compose application **Raadio image builder**:
 - Ära lisa salvestuste/oleku volume'eid ega salvesti parooli.
 
 Ehituskäsk käitab testid enne avaldamist. Tõmmised avaldatakse kujul
-`<RAADIO_IMAGE_REPOSITORY>:<täispikk-commit>` ja mugavussildiga `main`.
+`<RAADIO_IMAGE_REPOSITORY>:<täispikk-commit>` ning siltidega `main` ja `latest`.
 Olemasolevat commit-silti ehituskäsk üle ei kirjuta. Ehitusrakendus ei
 käivita püsivat konteinerit: selle runtime-olek võib seega olla `exited`,
 kuigi ehituse deployment on `finished`.
@@ -48,8 +48,10 @@ Loo Git-põhine Application, build pack **Docker Compose**:
 
 - Repository: `https://github.com/riffmasta/raadio`, branch `main`.
 - Base directory: `/`, Compose location: `/compose.coolify.runtime.yaml`.
-- `RAADIO_IMAGE`: valitud commit-sildiga või SHA256 digestiga registriaadress.
-  Ära kasuta salvesti juurutuseks liikuvat `main` silti.
+- `RAADIO_IMAGE_REPOSITORY`: sama registri host ja tõmmise nimi mis ehitajal;
+  sea runtime-muutujaks. Vaikimisi tõmmatakse selle `latest` silt.
+- `RAADIO_IMAGE`: valikuline täielik tõmmise aadress, kui soovid `latest` asemel
+  kindlat commit-silti või SHA256 digestit. Tavakasutuses jäta see määramata.
 - Auto deploy ja preview deployments: välja lülitatud.
 - Inject build arguments to Dockerfile: välja lülitatud. Runtime-seadeid
   pole ehitamiseks vaja; see hoiab ka Dockeri kihtide vahemälu kasutuses.
@@ -86,9 +88,10 @@ konteineri uuesti loomisel. Failid kirjutab UID/GID 1000.
 
 1. Vali ehitusrakenduses **Deploy** ning oota edukat ehitamist, teste ja push'i.
    See ei taaskäivita salvestit.
-2. Kontrolli lehelt, et ühtegi salvestust pole pooleli. Sea salvesti rakenduses
-   `RAADIO_IMAGE` edukalt ehitatud commitile või digestile ning vali **Deploy**.
-   Coolify tõmbab tõmmise ja loob konteineri uuesti samade volume'itega.
+2. Kontrolli lehelt, et ühtegi salvestust pole pooleli, ning vali salvesti
+   rakenduses **Deploy**. Coolify tõmbab `latest` tõmmise uuesti ja loob
+   konteineri uuesti samade volume'itega. Avaldamine ise salvestit ei taaskäivita.
+   Kui `RAADIO_IMAGE` on määratud, kasutatakse selle asemel valitud versiooni.
 3. Kontrolli, et konteiner on healthy, veebileht küsib parooli ja salvesti
    olek uueneb. Proovi lühikest salvestust ning helifailis edasi liikumist.
 

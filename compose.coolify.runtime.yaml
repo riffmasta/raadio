@@ -2,7 +2,7 @@
 # Local access only; do not forward this port through the router.
 services:
   raadiosalvesti:
-    image: ${RAADIO_IMAGE:?Select a registry image pinned to a commit or digest}
+    image: ${RAADIO_IMAGE:-${RAADIO_IMAGE_REPOSITORY:?Set the private registry repository in Coolify}:latest}
     pull_policy: always
     restart: unless-stopped
     expose:
